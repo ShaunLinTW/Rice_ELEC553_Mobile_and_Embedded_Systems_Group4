@@ -1,6 +1,9 @@
 import time
 import math
 
+# stop: 7.5
+# forward min: 8.0
+# forward max: 9.0
 # ESC motor speed function
 def ESC(percentage):
     # P9_14 - Speed/ESC
@@ -12,6 +15,8 @@ def ESC(percentage):
         filetowrite.write('1')
     return
 
+# turn left max: 11
+# turn right max: 3
 # steering angle of the servo function
 def Servo(percentage):
     # P9_16 - Steering
@@ -32,11 +37,9 @@ ESC(motor_percentage)
 time.sleep(0.5)
 
 # Start the motor
-# ESC(8.0)
-# time.sleep(0.5)
+for x in range(75, 91):
+    ESC(x/10)
+    time.sleep(0.1)
 
-Servo(11)
-time.sleep(3)
-
-Servo(7.5)
-time.sleep(0.5)
+ESC(7.5)
+time.sleep(0.5) 
