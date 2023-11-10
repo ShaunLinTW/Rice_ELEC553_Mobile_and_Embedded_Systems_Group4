@@ -1,1 +1,48 @@
-ifconfig
+debian@BeagleBone-AI64:~$ ifconfig
+docker0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+        ether 02:42:68:8d:f7:a2  txqueuelen 0  (Ethernet)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+eth0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        ether 34:08:e1:59:d8:3c  txqueuelen 1000  (Ethernet)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
+        inet 127.0.0.1  netmask 255.0.0.0
+        inet6 ::1  prefixlen 128  scopeid 0x10<host>
+        loop  txqueuelen 1000  (Local Loopback)
+        RX packets 849  bytes 75289 (73.5 KiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 849  bytes 75289 (73.5 KiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+usb0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        inet6 fe80::3608:e1ff:fe59:d83f  prefixlen 64  scopeid 0x20<link>
+        ether 34:08:e1:59:d8:3f  txqueuelen 1000  (Ethernet)
+        RX packets 508  bytes 40120 (39.1 KiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 379  bytes 78017 (76.1 KiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+usb1: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        ether 34:08:e1:59:d8:41  txqueuelen 1000  (Ethernet)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+wlan0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 168.5.146.192  netmask 255.255.192.0  broadcast 168.5.191.255
+        inet6 fe80::84dc:584b:ba8b:2f8  prefixlen 64  scopeid 0x20<link>
+        ether 90:de:80:99:44:bf  txqueuelen 1000  (Ethernet)
+        RX packets 1474  bytes 538399 (525.7 KiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 114  bytes 26942 (26.3 KiB)
+        TX errors 0  dropped 1 overruns 0  carrier 0  collisions 0
