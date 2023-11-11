@@ -42,19 +42,23 @@ ESC(motor_percentage)
 time.sleep(0.5)
 
 # Start the motor
+print("Starting the motor")
 for x in range(75, 91):
     ESC(x/10)
     time.sleep(0.1)
 
 # Stop the motor
+print("Stopping the motor")
 ESC(7.5)
 time.sleep(0.5) 
 
 # Turn from left to right
+print("Turning from left to right")
 for x in range(3, 11):
     Servo(x)
     time.sleep(0.1)
 
 # Turn Servo back to center
+print("Turning Servo back to center")
 Servo(7.5)
 time.sleep(0.5)
