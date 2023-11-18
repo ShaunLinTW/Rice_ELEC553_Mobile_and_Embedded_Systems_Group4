@@ -3,6 +3,8 @@ ELEC 424/553
 Project 3
 Authors: Eric Lin(el38), Shaun Lin(hl116), Yen-Yu Chien (yc185), Saif Khan (sbk7)
 '''
+# Code references here https://www.instructables.com/Autonomous-Lane-Keeping-Car-Using-Raspberry-Pi-and/
+# Code references here https://www.hackster.io/covid-debuff/covid-debuff-semi-autonomous-rc-car-platform-75b072
 import time
 import math
 
