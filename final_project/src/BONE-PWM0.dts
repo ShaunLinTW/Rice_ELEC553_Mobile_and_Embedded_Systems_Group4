@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2022 BeagleBoard.org - https://beagleboard.org/
+ *
+ * https://docs.beagleboard.io/latest/boards/capes/cape-interface-spec.html#pwm
+ */
+
+/*
+ELEC 424/553
+Final Project
+Authors: Eric Lin(el38), Shaun Lin(hl116), Yen-Yu Chien (yc185), Saif Khan (sbk7)
+*/
+
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/board/k3-j721e-bone-pins.h>
+ 
+ /dts-v1/;
+ /plugin/;
+ 
+ /*
+  * Helper to show loaded overlays under: /proc/device-tree/chosen/overlays/
+  */
+ &{/chosen} {
+     overlays {
+         BONE-PWM0.kernel = __TIMESTAMP__;
+     };
+ };
+ 
+ &bone_pwm_0 {
+     status = "okay";
+ };
+ 
+ /*
+  * Shaun's code:
+  */
+ &{/} {
+     final_project_device {
+     compatible = "ELEC553,Final_Project";
+     userbtn-gpios = <gpio_P8_03 GPIO_ACTIVE_HIGH>;
+     };
+ };
