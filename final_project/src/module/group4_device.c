@@ -31,6 +31,8 @@ static irq_handler_t gpio_irq_handler(unsigned int irq, void *dev_id, struct pt_
     time_diff = curent_time - last_time;
     last_time = curent_time;
     speed = time_diff;
+    // print IRQ interrupt
+    printk(KERN_INFO "GPIO Interrupt!\n");
     
     // return
     return (irq_handler_t) IRQ_HANDLED;
@@ -39,13 +41,14 @@ static irq_handler_t gpio_irq_handler(unsigned int irq, void *dev_id, struct pt_
 // probe function
 static int car_probe(struct platform_device *pdev)
 {
+    printk(KERN_INFO "GPIO successfully probed!\n");
     userbtn = devm_gpiod_get(&pdev->dev, "userbtn", GPIOD_IN);
     gpiod_set_debounce(userbtn, 1000000);
     /* Setup the interrupt */
     irq_number = gpiod_to_irq(userbtn);
     if(request_irq(irq_number, (irq_handler_t) gpio_irq_handler,IRQF_TRIGGER_FALLING, "my_gpio_irq", NULL) != 0)
     {
-        printk("Error!\nCan not request interrupt nr.: %d\n", irq_number);
+        printk(KERN_INFO "Error!\nCan not request interrupt nr.: %d\n", irq_number);
         gpiod_put(userbtn);
         return -1;
     }
@@ -54,7 +57,7 @@ static int car_probe(struct platform_device *pdev)
 // remove function
 static int car_remove(struct platform_device *pdev)
 {
-    printk("GPIO example exit\n");
+    printk(KERN_INFO "GPIO successfully removed!\n");
     gpiod_put(userbtn);
     free_irq(irq_number, NULL);
     return(0);
@@ -74,7 +77,7 @@ static struct platform_driver rc_car_driver = {
     }
 };
 module_platform_driver(rc_car_driver);
-MODULE_DESCRIPTION("ELEC553 Final Project");
+MODULE_DESCRIPTION("ELEC553 Final Project Group 4");
 MODULE_AUTHOR("GOAT");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:rc_car_driver");
