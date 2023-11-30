@@ -7,59 +7,69 @@ Authors: Eric Lin(el38), Shaun Lin(hl116), Yen-Yu Chien (yc185), Saif Khan (sbk7
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/kernel.h>
-#include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
-#include <linux/timekeeping.h>
-struct gpio_desc *userbtn, *blue;
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/fs.h>
+#include <linux/device.h>
+#include <linux/uaccess.h>
+
+#define DEVICE_NAME "carencoder"
+#define CLASS_NAME "carclass"
+
 unsigned int irq_number;
+struct gpio_desc *led_gpio;
+struct gpio_desc *encoder_gpio;
 
-int state = 0; // Counter Value
-int flag = 0; // Flag for button press
-long curent_time = 0; // Current time
-long last_time = 0; // Last time
-long time_diff = 0; // Time difference
-long speed; // Current Speed
+static int elapsed_ms = 0;
+ktime_t start_time, old_time, elapsed;
 
-module_param(speed,long,S_IRUGO);
+module_param(elapsed_ms, int, S_IRUGO);
 
 // interrupt function
-static irq_handler_t gpio_irq_handler(unsigned int irq, void *dev_id, struct pt_regs *regs) {
-    
-    curent_time = ktime_get_real_ns();
-    time_diff = curent_time - last_time;
-    last_time = curent_time;
-    speed = time_diff;
-    // print IRQ interrupt
-    printk(KERN_INFO "GPIO Interrupt!\n");
-    
-    // return
+static irq_handler_t encoder_irq_handler(unsigned int irq, void *dev_id, struct pt_regs *regs) {
+    // Calculates the elapsed time by getting the current time and subtracting the
+    // old time from it
+    ktime_t new_time = ktime_get();
+    elapsed = ktime_sub(new_time, old_time);
+    old_time = new_time;
+    elapsed_ms = ktime_to_ns(elapsed) / 100000;
+
+    printk("Elapsed: %i\n", elapsed_ms);
+
     return (irq_handler_t) IRQ_HANDLED;
 }
 
 // probe function
-static int car_probe(struct platform_device *pdev)
+static int encoder_probe(struct platform_device *pdev)
 {
-    printk(KERN_INFO "GPIO successfully probed!\n");
-    userbtn = devm_gpiod_get(&pdev->dev, "userbtn", GPIOD_IN);
-    gpiod_set_debounce(userbtn, 1000000);
-    /* Setup the interrupt */
-    irq_number = gpiod_to_irq(userbtn);
-    if(request_irq(irq_number, (irq_handler_t) gpio_irq_handler,IRQF_TRIGGER_FALLING, "my_gpio_irq", NULL) != 0)
-    {
-        printk(KERN_INFO "Error!\nCan not request interrupt nr.: %d\n", irq_number);
-        gpiod_put(userbtn);
+    printk("Setting up encoder IRQ.\n");
+    old_time = ktime_get();
+
+    encoder_gpio = devm_gpiod_get(&pdev->dev, "userbutton", GPIOD_IN);
+    gpiod_set_debounce(encoder_gpio, 1000000);
+    irq_number = gpiod_to_irq(encoder_gpio);
+    // Checks if the irq request was successful
+    if (request_irq(irq_number, (irq_handler_t) encoder_irq_handler, IRQF_TRIGGER_RISING, "button_gpio_irq", &pdev->dev) != 0) {
+        printk("Failed to request IRQ.\n");
         return -1;
     }
-    return(0);
+
+    printk("Successfully requested IRQ.\n");
+
+    return 0;
 }
 // remove function
-static int car_remove(struct platform_device *pdev)
+static int encoder_remove(struct platform_device *pdev)
 {
     printk(KERN_INFO "GPIO successfully removed!\n");
-    gpiod_put(userbtn);
-    free_irq(irq_number, NULL);
+    struct device *temp_dev;
+    // Frees the IRQ woah neat
+    temp_dev = &pdev->dev;
+    free_irq(irq_number, &temp_dev->id);
+    printk("IRQ Freed!\n");
     return(0);
 }
 static struct of_device_id matchy_match[] = {
@@ -67,17 +77,17 @@ static struct of_device_id matchy_match[] = {
     {/* end node */}
 };
 // platform driver object
-static struct platform_driver rc_car_driver = {
-    .probe = car_probe,
-    .remove = car_remove,
+static struct platform_driver encoder_driver = {
+    .probe = encoder_probe,
+    .remove = encoder_remove,
     .driver = {
-        .name = "rc_car_driver",
+        .name = "encoder_driver",
         .owner = THIS_MODULE,
         .of_match_table = matchy_match,
     }
 };
-module_platform_driver(rc_car_driver);
+module_platform_driver(encoder_driver);
 MODULE_DESCRIPTION("ELEC553 Final Project Group 4");
-MODULE_AUTHOR("GOAT");
+MODULE_AUTHOR("Shaun, Eric, Yen-Yu, Saif");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:rc_car_driver");
+MODULE_ALIAS("platform:encoder_driver");
