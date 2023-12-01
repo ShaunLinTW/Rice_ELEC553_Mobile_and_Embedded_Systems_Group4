@@ -34,11 +34,11 @@ def Servo(percentage):
     return
 
 # read encoder function
-def read_encoder_value():
-    # P8_03 - Encoder
-    with open('/sys/module/group4_device/parameters/elapsed_ms', 'r') as filetoread:
-        encoder = int(filetoread.read())
-    return encoder
+# def read_encoder_value():
+#     # P8_03 - Encoder
+#     with open('/sys/module/group4_device/parameters/speed', 'r') as filetoread:
+#         encoder_value = filetoread.read()
+#     return int(encoder_value)
 
 # Initialize the servo
 servo_percentage = 7.5
@@ -47,6 +47,8 @@ Servo(servo_percentage)
 motor_percentage = 7.5
 ESC(motor_percentage)
 time.sleep(0.5)
+# Initialize the encoder
+encoder = 1
 
 # Start the motor
 print("Starting the motor")
@@ -58,8 +60,12 @@ ESC(8.0)
 # Read the encoder value in while loop
 print("Reading the encoder value")
 while True:
-    encoder = read_encoder_value()
-    print(encoder)
+    # encoder = read_encoder_value()
+    # print(encoder)
+    # time.sleep(0.1)
+    with open('/sys/module/group4_device/parameters/speed', 'r') as filetoread:
+        curr_speed = filetoread.readlines()
+        print("Speed: ", curr_speed[1])
     time.sleep(0.1)
 
 # Stop the motor

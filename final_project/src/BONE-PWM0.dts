@@ -10,13 +10,14 @@ ELEC 424/553
 Final Project
 Authors: Eric Lin(el38), Shaun Lin(hl116), Yen-Yu Chien (yc185), Saif Khan (sbk7)
 */
-
- #include <dt-bindings/gpio/gpio.h>
- #include <dt-bindings/board/k3-j721e-bone-pins.h>
  
+
  /dts-v1/;
  /plugin/;
  
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/board/k3-j721e-bone-pins.h>
+
  /*
   * Helper to show loaded overlays under: /proc/device-tree/chosen/overlays/
   */
@@ -29,13 +30,10 @@ Authors: Eric Lin(el38), Shaun Lin(hl116), Yen-Yu Chien (yc185), Saif Khan (sbk7
  &bone_pwm_0 {
      status = "okay";
  };
- 
- /*
-  * Shaun's code:
-  */
+
  &{/} {
-     final_project_device {
-     compatible = "ELEC553,Final_Project";
-     userbtn-gpios = <gpio_P8_03 GPIO_ACTIVE_HIGH>;
+     group4_device {
+        compatible = "elec553,finalproject";
+        userbtn-gpios = <gpio_P8_03 GPIO_ACTIVE_HIGH>;
      };
  };

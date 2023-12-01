@@ -9,71 +9,71 @@ Authors: Eric Lin(el38), Shaun Lin(hl116), Yen-Yu Chien (yc185), Saif Khan (sbk7
 #include <linux/kernel.h>
 #include <linux/gpio/consumer.h>
 #include <linux/platform_device.h>
-#include <linux/interrupt.h>
-#include <linux/module.h>
 #include <linux/init.h>
-#include <linux/fs.h>
-#include <linux/device.h>
-#include <linux/uaccess.h>
+#include <linux/gpio.h>
+#include <linux/interrupt.h>
+#include <linux/ktime.h>
 
-#define DEVICE_NAME "carencoder"
-#define CLASS_NAME "carclass"
+//Inturupt handler number
+int irq_number;
 
-unsigned int irq_number;
-struct gpio_desc *led_gpio;
-struct gpio_desc *encoder_gpio;
+//refers to button pin P8_14
+struct gpio_desc *button;
 
-static int elapsed_ms = 0;
-ktime_t start_time, old_time, elapsed;
+ktime_t curr_time, previous_time;
+int speed;
+// save the speed as a module parameter
+module_param(speed, int, S_IRUGO);
 
-module_param(elapsed_ms, int, S_IRUGO);
-
-// interrupt function
-static irq_handler_t encoder_irq_handler(unsigned int irq, void *dev_id, struct pt_regs *regs) {
-    // Calculates the elapsed time by getting the current time and subtracting the
-    // old time from it
-    ktime_t new_time = ktime_get();
-    elapsed = ktime_sub(new_time, old_time);
-    old_time = new_time;
-    elapsed_ms = ktime_to_ns(elapsed) / 100000;
-
-    printk("Elapsed: %i\n", elapsed_ms);
-
-    return (irq_handler_t) IRQ_HANDLED;
+// function that handles the interrupt
+static irq_handler_t gpio_irq_handler(unsigned int irq, void *dev_id, struct pt_regs *regs) {
+    int temp;
+    printk("Speed encoder triggered.\n");
+	curr_time = ktime_get();
+    // int temp = ktime_to_ns(curr_time - previous_time) / 1000000;
+    temp = ktime_to_ns(curr_time - previous_time);
+    temp = temp / 1000000;
+    if(temp > 1) { speed = temp; }
+    printk("Difference between triggers: %d\n", speed);
+    previous_time = curr_time;
+	return (irq_handler_t) IRQ_HANDLED; 
 }
 
-// probe function
+// probe function, takes in the platform device that allows us to get the references to the pins
 static int encoder_probe(struct platform_device *pdev)
 {
-    printk("Setting up encoder IRQ.\n");
-    old_time = ktime_get();
+	printk("gpiod_driver has been inserted.\n");
+    //Get the pins based on what we called them in the device tree file:  "name"-gpios
+	//led = devm_gpiod_get(&pdev->dev, "led", GPIOD_OUT_LOW);
+	button = devm_gpiod_get(&pdev->dev, "userbtn", GPIOD_IN);
 
-    encoder_gpio = devm_gpiod_get(&pdev->dev, "userbutton", GPIOD_IN);
-    gpiod_set_debounce(encoder_gpio, 1000000);
-    irq_number = gpiod_to_irq(encoder_gpio);
-    // Checks if the irq request was successful
-    if (request_irq(irq_number, (irq_handler_t) encoder_irq_handler, IRQF_TRIGGER_RISING, "button_gpio_irq", &pdev->dev) != 0) {
-        printk("Failed to request IRQ.\n");
-        return -1;
-    }
+    //Set waiting period before next input
+	gpiod_set_debounce(button, 1000000);
 
-    printk("Successfully requested IRQ.\n");
 
-    return 0;
+    //Pair the button pin with an irq number
+	irq_number = gpiod_to_irq(button);
+
+    //Pair the number with the function that handles it
+	if(request_irq(irq_number, (irq_handler_t) gpio_irq_handler, IRQF_TRIGGER_RISING, "my_gpio_irq", NULL) != 0){
+		printk("Error!\nCan not request interrupt nr.: %d\n", irq_number);
+		free_irq(irq_number, NULL);
+		return -1;
+	}
+	return 0;
 }
-// remove function
+
+// remove function ,takes in the platform device that allows us to get the references to the pins
 static int encoder_remove(struct platform_device *pdev)
 {
-    printk(KERN_INFO "GPIO successfully removed!\n");
-    struct device *temp_dev;
-    // Frees the IRQ woah neat
-    temp_dev = &pdev->dev;
-    free_irq(irq_number, &temp_dev->id);
-    printk("IRQ Freed!\n");
-    return(0);
+	printk("Custom gpiod_driver module has been removed and irq has been freed\n");
+	irq_number = gpiod_to_irq(button);
+	//TBH not sure what goes in the second argument
+    free_irq(irq_number, NULL);
+	return 0;
 }
 static struct of_device_id matchy_match[] = {
-    {.compatible = "ELEC553,Final_Project"},
+    {.compatible = "elec553,finalproject"},
     {/* end node */}
 };
 // platform driver object
