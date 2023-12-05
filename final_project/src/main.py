@@ -1,6 +1,6 @@
 '''
 ELEC 424/553
-Project 3
+Final Project
 Authors: Eric Lin(el38), Shaun Lin(hl116), Yen-Yu Chien (yc185), Saif Khan (sbk7)
 '''
 import time
