@@ -226,10 +226,10 @@ def modify_Servo(percentage):
 
 
 # read the speed from the encoder
-def read_encoder():
+# def read_encoder():
     # with open('/sys/module/yg77_device/parameters/speed', 'r') as filetoread:
     #     speed = filetoread.read()
-    return speed
+    # return speed
 
 
 # Detect the red edges for red box detection
@@ -261,19 +261,19 @@ video.set(cv2.CAP_PROP_FRAME_HEIGHT, 120)
 
 # Status vairables
 last_error_st = 0
-last_error_sp = 0
+# last_error_sp = 0
 last_time = 0
-last_encoder = 0
+# last_encoder = 0
 # PID parameters
 Kp_st = 0.1944
 Ki_st = 0.10935
 Kd_st = 0.03888 * 1.5
 
-Kp_sp = 0.001944
-Ki_sp = 0.0
-Kd_sp = 0.0
+# Kp_sp = 0.001944
+# Ki_sp = 0.0
+# Kd_sp = 0.0
 # Default speed
-default_speed = 8.05
+default_speed = 8.0
 
 # Records for graphs
 iter_cnt = 0
@@ -293,7 +293,7 @@ target_speed = 4e-07
 
 while True:
     # Reading from the encoder
-    encoder = read_encoder()
+    # encoder = read_encoder()
     # Read from camera
     ret, frame = video.read()
     # print the current frame number
@@ -311,13 +311,14 @@ while True:
     lane_lines_image = display_lines(frame, lane_lines)
     steering_angle = get_steering_angle(frame, lane_lines)
     heading_image = display_heading_line(lane_lines_image, steering_angle)
+    print(steering_angle)
     # Detect the red box
     sum = Counter(red_edges.flatten())
-    for key, value in sum.items():
-        if (key == 255):
-            if (value > 100 and abs(90 - steering_angle) < 50):
-                end_flag = 1
-                print("RED DETECTED")
+    # for key, value in sum.items():
+    #     if (key == 255):
+    #         if (value > 100 and abs(90 - steering_angle) < 50):
+    #             end_flag = 1
+    #             print("RED DETECTED")
 
     # # Stop Sign Dectection starts here
     # # Code reference from https://github.com/fredotran/traffic-sign-detector-yolov4
@@ -357,41 +358,42 @@ while True:
     #     time.sleep(5)
     #     modify_ESC(default_speed)
     #     # Update the time
-    # now = time.time()
-    # dt = now - last_time
+    now = time.time()
+    dt = now - last_time
     #
     # # Steer PID
-    # error_st = 90 - steering_angle
-    # error_diff_st = (error_st - last_error_st) / dt
-    # if (iter_cnt != 0):
-    #     error_int_st = (error_st - last_error_st) * dt
-    # else:
-    #     error_int_st = 0
-    # last_error_st = error_st
-    # servo_percentage = servo_percentage + Kp_st * error_st + Kd_st * error_diff_st + Ki_st * error_int_st
-    # # Correct the overshoot
-    # if (servo_percentage > 8.6):
-    #     servo_percentage = 8.6
-    # elif (servo_percentage < 6.5):
-    #     servo_percentage = 6.5
-    # # modify the PWM duty of servo
-    # modify_Servo(servo_percentage)
-    # # Speed PID
+    error_st = 90 - steering_angle
+    error_diff_st = (error_st - last_error_st) / dt
+    if (iter_cnt != 0):
+        error_int_st = (error_st - last_error_st) * dt
+    else:
+        error_int_st = 0
+    last_error_st = error_st
+    servo_percentage = servo_percentage + Kp_st * error_st + Kd_st * error_diff_st + Ki_st * error_int_st
+    # Correct the overshoot
+    if (servo_percentage > 8.8):
+        servo_percentage = 8.8
+    elif (servo_percentage < 6.3):
+        servo_percentage = 6.3
+    # modify the PWM duty of servo
+    modify_Servo(servo_percentage)
+    # -------- we don't have encoder, so we don't need to do the speed PID --------
+    # Speed PID
     # error_sp = int(encoder) - target_speed
     # error_diff_sp = (error_sp - last_error_sp) / dt
     # if (iter_cnt != 0):
-    #     error_int_sp = (error_sp - last_error_sp) * dt
+        # error_int_sp = (error_sp - last_error_sp) * dt
     # else:
-    #     error_int_sp = 0
+        # error_int_sp = 0
     # last_error_sp = error_sp
     # default_speed = default_speed - Kp_sp * error_sp + Kd_sp * error_diff_sp + Ki_sp * error_int_sp
-    # # Correct the overshoot
+    # Correct the overshoot
     # if (default_speed > 8.30):
-    #     default_speed = 8.30
+        # default_speed = 8.30
     # elif (default_speed < 8.20):
-    #     default_speed = 8.20
-    # # modify the PWM duty of motor
-    # modify_ESC(default_speed)
+        # default_speed = 8.20
+    # modify the PWM duty of motor
+    modify_ESC(default_speed)
     # Show the image
     # cv2.imshow('original', heading_image)
     key = cv2.waitKey(10)
@@ -402,19 +404,19 @@ while True:
     # # Record the variables
     # T = np.append(T, [iter_cnt])
     # steer_error = np.append(steer_error, [error_st / 100])
-    # speed_error = np.append(speed_error, [1 / error_sp * 1e7])
+    # # speed_error = np.append(speed_error, [1 / error_sp * 1e7])
     # steer_P = np.append(steer_P, [Kp_st * error_st])
     # steer_I = np.append(steer_I, [Kd_st * error_diff_st])
     # steer_D = np.append(steer_D, [Ki_st * error_int_st])
-    # speed_pwm_duty = np.append(speed_pwm_duty, [default_speed])
-    # speed = np.append(speed, [error_sp])
+    # # speed_pwm_duty = np.append(speed_pwm_duty, [default_speed])
+    # # speed = np.append(speed, [error_sp])
     # steer_pwm_duty = np.append(steer_pwm_duty, [servo_percentage])
     # iter_cnt = iter_cnt + 1
     # if (end_flag == 1):
     #     break
 
 # Stop the car
-modify_ESC(7.5)
+# modify_ESC(7.5)
 
 # Plot the first graph
 # plt.figure()
