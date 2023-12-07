@@ -11,7 +11,7 @@ import numpy as np
 import cv2
 import math
 from collections import Counter
-#from yolo_utils import *
+from matplotlib.pyplot import savefig
 
 # Code references from https://www.instructables.com/Autonomous-Lane-Keeping-Car-Using-Raspberry-Pi-and/
 # Code references from https://www.hackster.io/covid-debuff/covid-debuff-semi-autonomous-rc-car-platform-75b072
@@ -25,7 +25,7 @@ def convert_to_HSV(frame):
 
 
 # Detect the edges using canny method
-def detect_edges(frame):
+def detect_edges(hsv):
     # lower_blue = np.array([100, 43, 46], dtype = "uint8") # lower limit of blue color
     # upper_blue = np.array([124, 255, 255], dtype="uint8") # upper limit of blue color
     lower_blue = np.array([70, 90, 0], dtype="uint8")  # lower limit of blue color
@@ -39,7 +39,7 @@ def detect_edges(frame):
 
 
 # Capture the bottom half of the image
-def region_of_interest(edges):
+def region_of_interest(edges, interest_area):
     height, width = edges.shape  # extract the height and width of the edges frame
     mask = np.zeros_like(edges)  # make an empty matrix with same dimensions of the edges frame
 
@@ -47,8 +47,8 @@ def region_of_interest(edges):
     # specify the coordinates of 4 points (lower left, upper left, upper right, lower right)
     polygon = np.array([[
         (0, height),
-        (0, height / 2),
-        (width, height / 2),
+        (0, height * interest_area),
+        (width, height * interest_area),
         (width, height),
     ]], np.int32)
 
@@ -68,7 +68,7 @@ def detect_line_segments(cropped_edges):
 
 
 # Slope calculation
-def average_slope_intercept(frame, line_segments): #line segments stores HoughLines
+def average_slope_intercept(frame, line_segments, interest_area): #line segments stores HoughLines
     lane_lines = []
 
     if line_segments is None:
@@ -113,11 +113,11 @@ def average_slope_intercept(frame, line_segments): #line segments stores HoughLi
 
     left_fit_average = np.average(left_fit, axis=0)
     if len(left_fit) > 0:
-        lane_lines.append(make_points(frame, left_fit_average))
+        lane_lines.append(make_points(frame, left_fit_average, interest_area))
 
     right_fit_average = np.average(right_fit, axis=0)
     if len(right_fit) > 0:
-        lane_lines.append(make_points(frame, right_fit_average)) # make_points is defined in the next function
+        lane_lines.append(make_points(frame, right_fit_average, interest_area)) # make_points is defined in the next function
 
     # lane_lines is a 2-D array consisting the coordinates of the right and left lane lines
     # for example: lane_lines = [[x1,y1,x2,y2],[x1,y1,x2,y2]]
@@ -127,11 +127,11 @@ def average_slope_intercept(frame, line_segments): #line segments stores HoughLi
 
 
 # Draw lines
-def make_points(frame, line):
+def make_points(frame, line, interest_area):
     height, width, _ = frame.shape
     slope, intercept = line
     y1 = height  # bottom of the frame
-    y2 = int(y1 / 2)  # make points from middle of the frame down
+    y2 = int(y1 * (interest_area))  # make points from middle of the frame down
 
     if slope == 0:
         slope = 0.1
@@ -190,7 +190,7 @@ def get_steering_angle(frame, lane_lines):
 
 
 # Draw the heading line
-def display_heading_line(frame, steering_angle, line_color=(0, 0, 255), line_width=5):
+def display_heading_line(frame, steering_angle, interest_area, line_color=(0, 0, 255), line_width=5):
     heading_image = np.zeros_like(frame)
     height, width, _ = frame.shape
 
@@ -198,7 +198,7 @@ def display_heading_line(frame, steering_angle, line_color=(0, 0, 255), line_wid
     x1 = int(width / 2)
     y1 = height
     x2 = int(x1 - height / 2 / math.tan(steering_angle_radian)) # = (x1 - (height/2)/tangent )
-    y2 = int(height / 2)
+    y2 = int(height * interest_area)
 
     cv2.line(heading_image, (x1, y1), (x2, y2), line_color, line_width)
 
@@ -207,7 +207,6 @@ def display_heading_line(frame, steering_angle, line_color=(0, 0, 255), line_wid
     return heading_image
 
 #======================================= 20231201 ===========================================
-
 # Set the period time of the PWM
 period_time = 20000000
 def init_ESC():
@@ -243,10 +242,10 @@ def detect_red_edges(frame):
     lower_blue = np.array([0, 30, 166], dtype="uint8")  # lower limit of pink color
     upper_blue = np.array([179, 68, 246], dtype="uint8")  # upper limit of pink color
 
-    mask = cv2.inRange(hsv, lower_blue, upper_blue)  # this mask will filter out everything but red
+    mask = cv2.inRange(frame, lower_blue, upper_blue)  # this mask will filter out everything but red
     return mask
 
-def findPen(img):
+def findPen(img, imgContour):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
     lower = np.array([119, 4, 127], dtype="uint8")
@@ -254,8 +253,8 @@ def findPen(img):
 
     mask = cv2.inRange(hsv, lower, upper)
     result = cv2.bitwise_and(img, img, mask=mask) #return cropped_edges : in the yufi's code
-    penx, peny = findContour(mask)
-    cv2.circle(frame, (penx, peny), 10, [0, 0, 255], cv2.FILLED)
+    penx, peny = findContour(mask, imgContour)
+    cv2.circle(img, (penx, peny), 10, [0, 0, 255], cv2.FILLED)
     # print("x=", penx)
     # print("y=", peny)
     # if peny!=-1:
@@ -267,7 +266,7 @@ def findPen(img):
 
     return penx, peny
 
-def findContour(img):
+def findContour(img, imgContour):
     contours, hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     x, y, w, h = -1, -1, -1, -1
     for cnt in contours:
@@ -281,21 +280,31 @@ def findContour(img):
     return x+w//2, y
 
 
-# PID control loop (to be called for each frame or time interval)
-def pid_control(current_steering_angle, desired_steering_angle, min_steering_angle, max_steering_angle):
-    # PID parameters
-    Kp_st = 0.1944  # Proportional gain
-    Ki_st = 0.10935  # Integral gain
-    Kd_st = 0.03888 * 1.8  # Derivative gain
+T = []
+steer_error = []
+speed_error = []
+steer_P = []
+steer_I = []
+steer_D = []
+speed = []
+steer_pwm_duty = []
+speed_pwm_duty = []
 
+# PID control loop (to be called for each frame or time interval)
+def pid_control(frame_number, current_steering_angle, desired_steering_angle, min_steering_angle, max_steering_angle):
     # Initialize variables for PID
     integral_error = 0
     last_error = 0
     last_time = None
 
+    # PID parameters
+    Kp_st = 0.3395  # Proportional gain 
+    Ki_st = 0.0973  # Integral gain
+    Kd_st = 0.0818  # Derivative gain
+
     # Calculate time difference
     current_time = time.time()
-    time_difference = current_time - last_time if last_time is not None else 0
+    time_difference = current_time - last_time if last_time is not None else 1
     last_time = current_time
 
     # Error between the desired and actual steering angle
@@ -305,11 +314,18 @@ def pid_control(current_steering_angle, desired_steering_angle, min_steering_ang
     integral_error += error * time_difference
 
     # Derivative error (rate of change of error)
-    derivative_error = (error - last_error) / time_difference if time_difference > 0 else 0
+    derivative_error = (error - last_error) / time_difference
     last_error = error
 
     # Compute new steering angle or control output
     pid_output = Kp_st * error + Ki_st * integral_error + Kd_st * derivative_error
+
+    global T, steer_error, steer_P, steer_I, steer_D
+    T = np.append(T, [frame_number])
+    steer_error = np.append(steer_error, [error / 100])
+    steer_P = np.append(steer_P, [Kp_st * error])
+    steer_I = np.append(steer_I, [Ki_st * integral_error])
+    steer_D = np.append(steer_D, [Kd_st * derivative_error])
 
     # Adjust with neutral steering angle (90 degrees)
     new_steering_angle = pid_output + 90
@@ -320,14 +336,19 @@ def pid_control(current_steering_angle, desired_steering_angle, min_steering_ang
     return new_steering_angle
 
 
-def map_angle_to_duty_cycle(new_steering_angle, neutral_angle, min_angle, max_angle, min_duty_cycle, max_duty_cycle):
+def map_angle_to_duty_cycle(new_steering_angle, min_angle, max_angle, min_duty_cycle, max_duty_cycle, neutral_duty_cycle):
+    neutral_angle = 90
     # Calculate the range of steering motion and corresponding duty cycle range
-    angle_range = max_angle - min_angle
-    duty_cycle_range = max_duty_cycle - min_duty_cycle
+    left_angle_range = neutral_angle - min_angle
+    right_angle_range = max_angle - neutral_angle
+    left_duty_cycle_range = max_duty_cycle - neutral_duty_cycle
+    right_duty_cycle_range = neutral_duty_cycle - min_duty_cycle
 
     # Map the steering angle to duty cycle
-    # This linearly maps the angle within [min_angle, max_angle] to the duty cycle within [min_duty_cycle, max_duty_cycle]
-    duty_cycle = ((new_steering_angle - min_angle) / angle_range) * duty_cycle_range + min_duty_cycle
+    if new_steering_angle < neutral_angle:  # Turning left
+        duty_cycle = ((neutral_angle - new_steering_angle) / left_angle_range) * left_duty_cycle_range + neutral_duty_cycle
+    else:  # Turning right
+        duty_cycle = neutral_duty_cycle - ((new_steering_angle - neutral_angle) / right_angle_range) * right_duty_cycle_range
 
     return duty_cycle
 
@@ -347,16 +368,14 @@ def main():
     # Initialize the ESC
     init_Setup()
 
-    current_steering_angle = 90
-
     # Start the motor
     new_battery = True
     if new_battery:
-        slow_speed_percentage = 8.05
-        fast_speed_percentage = 8.15
+        slow_speed_percentage = 8.015
+        fast_speed_percentage = 8.009
     else:
-        slow_speed_percentage = 8.05
-        fast_speed_percentage = 8.15
+        slow_speed_percentage = 8.400
+        fast_speed_percentage = 8.500
     speed_percentage = fast_speed_percentage
     
     # Initialize the camera
@@ -366,21 +385,18 @@ def main():
     video.set(cv2.CAP_PROP_FRAME_WIDTH, 160)
     video.set(cv2.CAP_PROP_FRAME_HEIGHT, 120)
 
+    # History variable
+    current_steering_angle = 90
+
     # Red boxes detect & count
     red_y = -1
     red_cnt = 0
 
+    # interest area
+    interest_area = 4/10 # mask upper 1/3 area
+
     # Records for graphs
-    iter_cnt = 0
-    T = []
-    steer_error = []
-    speed_error = []
-    steer_P = []
-    steer_I = []
-    steer_D = []
-    speed = []
-    steer_pwm_duty = []
-    speed_pwm_duty = []
+    frame_number = 0
 
     # Sign variables
     end_flag = 0
@@ -389,6 +405,12 @@ def main():
     update_frame = 0
     second_area_flag = False
     
+    headers = ["Current Angle", "Desired Angle", "New Angle", "Servo %", "Speed %"]
+    # Format the data
+    formatted_data = "| {:<15} | {:<15} | {:<15} | {:<10} | {:<10} |".format(
+        "Current Angle", "Desired Angle", "New Angle", "Servo %", "Speed %"
+    )
+    print(formatted_data)
     # Stop loop when ctrl+c
     try:
         while True:
@@ -407,10 +429,18 @@ def main():
             hsv = convert_to_HSV(frame)
             edges = detect_edges(hsv)
             red_edges = detect_red_edges(hsv)
-            red_edges = region_of_interest(red_edges)
+
+            # TEST
+            if current_steering_angle > 110 or current_steering_angle < 70:
+                interest_area = 5/10
+            else:
+                interest_area = 4/10
+            # print(interest_area)
+
+            red_edges = region_of_interest(red_edges, interest_area)
 
             # Red boxes detection
-            red_x, red_y = findPen(frame)
+            red_x, red_y = findPen(frame, imgContour)
 
             # If the red box is detected
             if red_y!=-1 and not detect_done_flag:
@@ -419,28 +449,33 @@ def main():
                     time.sleep(0.6)
                 modify_Motor(7.5)
                 time.sleep(5)
-                modify_Motor(9.0)
+                modify_Motor(10.0)
                 detect_done_flag = True
                 second_area_flag = True
-                update_frame = iter_cnt
+                update_frame = frame_number
+                slow_speed_percentage = 8.02
+                fast_speed_percentage = 8.04
 
             # Wait for 50 frames to reset the flag
-            frame_diff = iter_cnt - update_frame
+            frame_diff = frame_number - update_frame
             if frame_diff > 50:
                 detect_done_flag = False
                 # print("Flag:", detect_done_flag)
             
             # Detect the lane lines
             line_segments = detect_line_segments(edges)
-            lane_lines = average_slope_intercept(frame, line_segments)
+            lane_lines = average_slope_intercept(frame, line_segments, interest_area)
             lane_lines_image = display_lines(frame, lane_lines)
             desired_steering_angle = get_steering_angle(frame, lane_lines)
-            heading_image = display_heading_line(lane_lines_image, desired_steering_angle)
+            heading_image = display_heading_line(lane_lines_image, desired_steering_angle, interest_area)
+            key = cv2.waitKey(10)
+            cv2.imwrite('/home/debian/Group4/src/opencv/frames/snap%s.png' % frames_num, heading_image)
 
             
             # ===================== STEER PID =====================
-            new_steering_angle = pid_control(current_steering_angle, desired_steering_angle, -30, 30)
-            servo_percentage = map_angle_to_duty_cycle(new_steering_angle, 90, 60, 120, 3, 11)
+            new_steering_angle = pid_control(frame_number, current_steering_angle, desired_steering_angle, 60, 120)
+            servo_percentage = map_angle_to_duty_cycle(new_steering_angle, 60, 120, 3.5, 10.5, 7.5)
+            # print(round(current_steering_angle,2), round(desired_steering_angle,2), round(new_steering_angle,2), round(servo_percentage,2))
             
             # modify the PWM duty of servo
             modify_Servo(servo_percentage)
@@ -449,9 +484,9 @@ def main():
             # ==================== SPEED PID =====================
             # Check the angle, if the angle is too large, slow down the car
             integral_bound = 5
-            if (servo_percentage >= 8.8 and iter_cnt % integral_bound == 0):
+            if (servo_percentage >= 8.8 and frame_number % integral_bound == 0):
                 speed_percentage = slow_speed_percentage
-            elif (servo_percentage <= 6.3 and iter_cnt % integral_bound == 0):
+            elif (servo_percentage <= 6.3 and frame_number % integral_bound == 0):
                 speed_percentage = slow_speed_percentage
             else:
                 speed_percentage = fast_speed_percentage
@@ -459,61 +494,65 @@ def main():
             # Modify the PWM duty of motor
             modify_Motor(speed_percentage)
 
-            print(round(servo_percentage,2), current_steering_angle, speed_percentage)
-
+            # Format the data
+            # formatted_data = "| {:<15} | {:<15} | {:<15} | {:<10} | {:<10} |".format(
+            #     "Current Angle", "Desired Angle", "New Angle", "Servo %", "Speed %"
+            # )
+            formatted_data = "| {:<15} | {:<15} | {:<15} | {:<10} | {:<10} |".format(
+                round(current_steering_angle, 2),
+                round(desired_steering_angle, 2),
+                round(new_steering_angle, 2),
+                round(servo_percentage, 2),
+                round(speed_percentage, 2),
+            )
+            print(formatted_data)
 
             # Show the image
             # cv2.imshow('original', heading_image)
-            key = cv2.waitKey(1)
+            key = cv2.waitKey(10)
             # save each frame to a png to make a video '/home/debian/Group4/src/opencv/frames/snap%s.png'
-            # cv2.imwrite('/home/debian/Group4/src/opencv/frames/snap%s.png' % frames_num, heading_image)
+            cv2.imwrite('/home/debian/Group4/src/opencv/frames/snap%s.png' % frames_num, heading_image)
 
+            global steer_pwm_duty, speed_pwm_duty
+            steer_pwm_duty = np.append(steer_pwm_duty, [servo_percentage])
+            speed_pwm_duty = np.append(speed_pwm_duty, [speed_percentage])
+            frame_number = frame_number + 1
             
-
-            # # Record the variables
-            # T = np.append(T, [iter_cnt])
-            # steer_error = np.append(steer_error, [angle_diff / 100])
-            # # speed_error = np.append(speed_error, [1 / error_sp * 1e7])
-            # steer_P = np.append(steer_P, [Kp_st * angle_diff])
-            # steer_I = np.append(steer_I, [Kd_st * angle_diff_per_sec])
-            # steer_D = np.append(steer_D, [Ki_st * error_int_st])
-            # # speed_pwm_duty = np.append(speed_pwm_duty, [speed])
-            # # speed = np.append(speed, [error_sp])
-            # steer_pwm_duty = np.append(steer_pwm_duty, [servo_percentage])
-            iter_cnt = iter_cnt + 1
-            # if (end_flag == 1):
-            #     break
     except KeyboardInterrupt:
-        
         modify_Motor(7.5)
         pass
 
-# Stop the car
-# modify_Motor(7.5)
+def plot_graph():
+    global T, steer_error, steer_P, steer_I, steer_D, speed_pwm_duty, steer_pwm_duty
+    # Plot the first graph
+    plt.figure()
+    plt.plot(T, steer_error, color='orange', linewidth=1.0, linestyle='solid', label='Error')
+    plt.plot(T, steer_P, color='red', linewidth=1.0, linestyle='solid', label='Proportional Response')
+    plt.plot(T, steer_I, color='blue', linewidth=1.0, linestyle='solid', label='Derivative Response')
+    plt.plot(T, steer_D, color='green', linewidth=1.0, linestyle='solid', label='Integral Response')
+    plt.legend(loc='upper right')
+    plt.title('PID Responses vs. Frame Number')
+    plt.xlabel('Frame')
+    plt.ylabel('PID Responses')
+    plt.grid()
 
-# Plot the first graph
-# plt.figure()
-# plt.plot(T, steer_error, color='orange', linewidth=1.0, linestyle='solid', label='Error')
-# plt.plot(T, steer_P, color='red', linewidth=1.0, linestyle='solid', label='Proportional Response')
-# plt.plot(T, steer_I, color='blue', linewidth=1.0, linestyle='solid', label='Derivative Response')
-# plt.plot(T, steer_D, color='green', linewidth=1.0, linestyle='solid', label='Integral Response')
-# plt.legend(loc='upper right')
-# plt.title('PID Responses vs. Frame Number')
-# plt.xlabel('Frame')
-# plt.ylabel('PID Responses')
-# plt.grid()
+    # Plot the second graph
+    plt.figure()
+    # plt.plot(T, speed_error, color='red', linewidth=1.0, linestyle='solid', label='Speed Error')
+    plt.plot(T, steer_error, color='orange', linewidth=1.0, linestyle='solid', label='Steer Error')
+    plt.plot(T, speed_pwm_duty, color='blue', linewidth=1.0, linestyle='solid', label='Speed PWM')
+    plt.plot(T, steer_pwm_duty, color='green', linewidth=1.0, linestyle='solid', label='Steer PWM')
+    plt.legend(loc='upper right')
+    plt.title('PWM and Error vs. Frame Number')
+    plt.xlabel('Frame')
+    plt.ylabel('Values')
+    plt.ylim((0, 11.5))
+    plt.grid()
 
-# Plot the second graph
-# plt.figure()
-# plt.plot(T, speed_error, color='red', linewidth=1.0, linestyle='solid', label='Speed Error')
-# plt.plot(T, steer_error, color='orange', linewidth=1.0, linestyle='solid', label='Steer Error')
-# plt.plot(T, speed_pwm_duty, color='blue', linewidth=1.0, linestyle='solid', label='Speed PWM')
-# plt.plot(T, steer_pwm_duty, color='green', linewidth=1.0, linestyle='solid', label='Steer PWM')
-# plt.legend(loc='upper right')
-# plt.title('PWM and Error vs. Frame Number')
-# plt.xlabel('Frame')
-# plt.ylabel('Values')
-# plt.ylim((0, 11.5))
-# plt.grid()
-# Do the plot
-# plt.show()
+    # # Do the plot
+    # plt.show()
+    # Save the plots to files
+    savefig('plot1.png')  
+
+main()
+plot_graph()
