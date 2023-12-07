@@ -154,7 +154,7 @@ def display_lines(frame, lines, line_color=(0, 255, 0), line_width=6):  # line c
     line_image = cv2.addWeighted(frame, 0.8, line_image, 1, 1)
     return line_image
 
-
+history_direction = 0
 # Calculate the steering angles
 def get_steering_angle(frame, lane_lines):
     height, width, _ = frame.shape
@@ -168,6 +168,13 @@ def get_steering_angle(frame, lane_lines):
 
     elif len(lane_lines) == 1:  # if only one line is detected
         x1, _, x2, _ = lane_lines[0][0] # extract the x1 and x2 from the only line
+        if(x1 > 80):
+            history_direction = 2
+        elif(x1 < 80):
+            history_direction = 1
+        else:
+            history_direction = 0
+
         x_offset = x2 - x1
         y_offset = int(height / 2)
 
@@ -204,10 +211,11 @@ def display_heading_line(frame, steering_angle, line_color=(0, 0, 255), line_wid
 # Modify the speed of the motor
 def modify_ESC(percentage):
     # P9_14 - Speed/ESC
+    period_time = 20000000
     with open('/dev/bone/pwm/1/a/period', 'w') as filetowrite:
-        filetowrite.write('20000000')
+        filetowrite.write(str(period_time))
     with open('/dev/bone/pwm/1/a/duty_cycle', 'w') as filetowrite:
-        filetowrite.write(str(int(percentage / 100 * 20000000)))
+        filetowrite.write(str(int(percentage / 100 * period_time)))
     with open('/dev/bone/pwm/1/a/enable', 'w') as filetowrite:
         filetowrite.write('1')
     return
@@ -243,6 +251,41 @@ def detect_red_edges(frame):
     mask = cv2.inRange(hsv, lower_blue, upper_blue)  # this mask will filter out everything but red
     return mask
 
+def findPen(img):
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    lower = np.array([119, 4, 127], dtype="uint8")
+    upper = np.array([179, 218, 255], dtype="uint8")
+
+    mask = cv2.inRange(hsv, lower, upper)
+    result = cv2.bitwise_and(img, img, mask=mask) #return cropped_edges : in the yufi's code
+    penx, peny = findContour(mask)
+    cv2.circle(frame, (penx, peny), 10, [0, 0, 255], cv2.FILLED)
+    # print("x=", penx)
+    # print("y=", peny)
+    # if peny!=-1:
+    #     #drawPoints.append([penx, peny, i])
+    #     # drawPoints.append([penx, peny])
+    # #==============
+    #     print("x=",penx)
+    #     print("y=",peny)
+
+    return penx, peny
+
+def findContour(img):
+    contours, hierarchy = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    x, y, w, h = -1, -1, -1, -1
+    for cnt in contours:
+        cv2.drawContours(imgContour, cnt, -1, (0, 0, 255), 4)
+        area = cv2.contourArea(cnt)
+        if area > 2500:  # original area > 500
+            peri = cv2.arcLength(cnt, True)
+            vertices = cv2.approxPolyDP(cnt, peri * 0.02, True)
+            x, y, w, h = cv2.boundingRect(vertices)
+
+    return x+w//2, y
+
+
 
 # # Initialize the servo
 servo_percentage = 7.5
@@ -250,8 +293,12 @@ modify_Servo(servo_percentage)
 # # Initialize the motor
 modify_ESC(7.5)
 time.sleep(0.5)
+
 # # Start the motor
-modify_ESC(8.0)
+slow_speed_percentage = 8.05
+fast_speed_percentage = 8.15
+speed_percentage = fast_speed_percentage
+# modify_ESC(speed_percentage)
 # Initialize the camera
 #video = cv2.VideoCapture(1,cv2.CAP_DSHOW)
 video = cv2.VideoCapture(2)
@@ -260,20 +307,24 @@ video.set(cv2.CAP_PROP_FRAME_WIDTH, 160)
 video.set(cv2.CAP_PROP_FRAME_HEIGHT, 120)
 
 # Status vairables
-last_error_st = 0
+last_angle_diff = 0
 # last_error_sp = 0
 last_time = 0
 # last_encoder = 0
-# PID parameters
+
+# PID parameters for steering
 Kp_st = 0.1944
 Ki_st = 0.10935
-Kd_st = 0.03888 * 1.5
+Kd_st = 0.03888 * 1.8
 
+# PID parameters for speed
 # Kp_sp = 0.001944
 # Ki_sp = 0.0
 # Kd_sp = 0.0
-# Default speed
-default_speed = 8.0
+
+# Red boxes detect & count
+red_y = -1
+red_cnt = 0
 
 # Records for graphs
 iter_cnt = 0
@@ -291,129 +342,202 @@ speed_pwm_duty = []
 end_flag = 0
 target_speed = 4e-07
 
-while True:
-    # Reading from the encoder
-    # encoder = read_encoder()
-    # Read from camera
-    ret, frame = video.read()
-    # print the current frame number
-    frames_num = video.get(cv2.CAP_PROP_POS_FRAMES)
-    if frame is None:
-   	 print("Error: Unable to load the image.")
+detect_done_flag = False
+update_frame = 0
+second_area_flag = False
+try:
+    while True:
 
-    # Process the images
-    hsv = convert_to_HSV(frame)
-    edges = detect_edges(hsv)
-    red_edges = detect_red_edges(hsv)
-    red_edges = region_of_interest(red_edges)
-    line_segments = detect_line_segments(edges)
-    lane_lines = average_slope_intercept(frame, line_segments)
-    lane_lines_image = display_lines(frame, lane_lines)
-    steering_angle = get_steering_angle(frame, lane_lines)
-    heading_image = display_heading_line(lane_lines_image, steering_angle)
-    print(steering_angle)
-    # Detect the red box
-    sum = Counter(red_edges.flatten())
-    # for key, value in sum.items():
-    #     if (key == 255):
-    #         if (value > 100 and abs(90 - steering_angle) < 50):
-    #             end_flag = 1
-    #             print("RED DETECTED")
+        # Reading from the encoder
+        # encoder = read_encoder()
+        # Read from camera
+        ret, frame = video.read()
 
-    # # Stop Sign Dectection starts here
-    # # Code reference from https://github.com/fredotran/traffic-sign-detector-yolov4
-    # # test our function read_classes
-    # img_file = './data/obj.names'
-    # classNames = read_classes(img_file)
-    # # print("Classes' names :\n", classNames)
-    # # load the model config and weights
-    # modelConfig_path = './cfg/yolov4-rds.cfg'
-    # modelWeights_path = './weights/yolov4-rds_best_2000.weights'
-    # # read the model cfg and weights with the cv2 DNN module
-    # neural_net = cv2.dnn.readNetFromDarknet(modelConfig_path, modelWeights_path)
-    # # set the preferable Backend to GPU
-    # neural_net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
-    # neural_net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
-    # # defining the input frame resolution for the neural network to process
-    # network = neural_net
-    # height, width = 160, 160
-    # # confidence and non-max suppression threshold for this YoloV3 version
-    # confidenceThreshold = 0.5
-    # nmsThreshold = 0.2
-    # # load the image
-    # img = frame
-    # # using convert_to_blob function :
-    # outputs = convert_to_blob(img, network, height, width)
-    # # apply object detection on the video file
-    # bounding_boxes, class_objects, confidence_probs = object_detection(outputs, img, confidenceThreshold)
-    # # perform non-max suppression
-    # indices = nms_bbox(bounding_boxes, confidence_probs, confidenceThreshold, nmsThreshold)
-    # # draw the boxes
-    # res = box_drawing(img, indices, bounding_boxes, class_objects, confidence_probs, classNames, color=(255, 0, 0),
-    #                   thickness=2)
-    # # If the Stop Sign detected
-    # if (res == 1):
-    #     print("STOP SIGN DETECTION")
-    #     modify_ESC(7.5)
-    #     time.sleep(5)
-    #     modify_ESC(default_speed)
-    #     # Update the time
-    now = time.time()
-    dt = now - last_time
-    #
-    # # Steer PID
-    error_st = 90 - steering_angle
-    error_diff_st = (error_st - last_error_st) / dt
-    if (iter_cnt != 0):
-        error_int_st = (error_st - last_error_st) * dt
-    else:
+        imgContour = frame.copy()
+        # print the current frame number
+        frames_num = video.get(cv2.CAP_PROP_POS_FRAMES)
+        if frame is None:
+            print("Error: Unable to load the image.")
+
+
+        # Process the images
+        hsv = convert_to_HSV(frame)
+        edges = detect_edges(hsv)
+        red_edges = detect_red_edges(hsv)
+        red_edges = region_of_interest(red_edges)
+
+        # # Red boxes
+        #     #=====================
+        red_x, red_y = findPen(frame)
+
+
+        
+        if red_y!=-1 and not detect_done_flag:
+            print("Detected")
+            if second_area_flag:
+                time.sleep(0.6)
+            modify_ESC(7.5)
+            time.sleep(5)
+            modify_ESC(9.0)
+            detect_done_flag = True
+            second_area_flag = True
+            update_frame = iter_cnt
+
+        frame_diff = iter_cnt - update_frame
+        if frame_diff > 50:
+            detect_done_flag = False
+            print("Flag:", detect_done_flag)
+
+           # red_cnt = red_cnt + 1
+           # if red_cnt == 1:
+           #     # stop the car for ever
+           #     modify_ESC(7.5)
+           # elif red_cnt > 1:
+           #     print(" Red_cnt is over ")
+           # else:
+           #     # if red_y > 95:
+           #           # stop the car for 5 seconds
+           #           modify_ESC(7.5)
+           #           time.sleep(5)
+           #           modify_ESC(speed_percentage)
+        
+        
+        
+
+        #=====================================
+        line_segments = detect_line_segments(edges)
+        lane_lines = average_slope_intercept(frame, line_segments)
+        lane_lines_image = display_lines(frame, lane_lines)
+        steering_angle = get_steering_angle(frame, lane_lines)
+        heading_image = display_heading_line(lane_lines_image, steering_angle)
+
+        # Detect the red box
+        sum = Counter(red_edges.flatten())
+        # for key, value in sum.items():
+        #     if (key == 255):
+        #         if (value > 100 and abs(90 - steering_angle) < 50):
+        #             end_flag = 1
+        #             print("RED DETECTED")
+
+        # # Stop Sign Dectection starts here
+        # # Code reference from https://github.com/fredotran/traffic-sign-detector-yolov4
+        # # test our function read_classes
+        # img_file = './data/obj.names'
+        # classNames = read_classes(img_file)
+        # # print("Classes' names :\n", classNames)
+        # # load the model config and weights
+        # modelConfig_path = './cfg/yolov4-rds.cfg'
+        # modelWeights_path = './weights/yolov4-rds_best_2000.weights'
+        # # read the model cfg and weights with the cv2 DNN module
+        # neural_net = cv2.dnn.readNetFromDarknet(modelConfig_path, modelWeights_path)
+        # # set the preferable Backend to GPU
+        # neural_net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+        # neural_net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
+        # # defining the input frame resolution for the neural network to process
+        # network = neural_net
+        # height, width = 160, 160
+        # # confidence and non-max suppression threshold for this YoloV3 version
+        # confidenceThreshold = 0.5
+        # nmsThreshold = 0.2
+        # # load the image
+        # img = frame
+        # # using convert_to_blob function :
+        # outputs = convert_to_blob(img, network, height, width)
+        # # apply object detection on the video file
+        # bounding_boxes, class_objects, confidence_probs = object_detection(outputs, img, confidenceThreshold)
+        # # perform non-max suppression
+        # indices = nms_bbox(bounding_boxes, confidence_probs, confidenceThreshold, nmsThreshold)
+        # # draw the boxes
+        # res = box_drawing(img, indices, bounding_boxes, class_objects, confidence_probs, classNames, color=(255, 0, 0),
+        #                   thickness=2)
+        # # If the Stop Sign detected
+        # if (res == 1):
+        #     print("STOP SIGN DETECTION")
+        #     modify_ESC(7.5)
+        #     time.sleep(5)
+        #     modify_ESC(speed)
+        #     # Update the time
+        now = time.time()
+        dt = now - last_time
+        #
+
+
+        # # Steer PID
+        angle_diff = 90 - steering_angle
+        angle_diff_per_sec = (angle_diff - last_angle_diff) / dt
+        # if (iter_cnt != 0):
+        #     error_int_st = (angle_diff - last_angle_diff) * dt
+        # else:
         error_int_st = 0
-    last_error_st = error_st
-    servo_percentage = servo_percentage + Kp_st * error_st + Kd_st * error_diff_st + Ki_st * error_int_st
-    # Correct the overshoot
-    if (servo_percentage > 8.8):
-        servo_percentage = 8.8
-    elif (servo_percentage < 6.3):
-        servo_percentage = 6.3
-    # modify the PWM duty of servo
-    modify_Servo(servo_percentage)
-    # -------- we don't have encoder, so we don't need to do the speed PID --------
-    # Speed PID
-    # error_sp = int(encoder) - target_speed
-    # error_diff_sp = (error_sp - last_error_sp) / dt
-    # if (iter_cnt != 0):
-        # error_int_sp = (error_sp - last_error_sp) * dt
-    # else:
-        # error_int_sp = 0
-    # last_error_sp = error_sp
-    # default_speed = default_speed - Kp_sp * error_sp + Kd_sp * error_diff_sp + Ki_sp * error_int_sp
-    # Correct the overshoot
-    # if (default_speed > 8.30):
-        # default_speed = 8.30
-    # elif (default_speed < 8.20):
-        # default_speed = 8.20
-    # modify the PWM duty of motor
-    modify_ESC(default_speed)
-    # Show the image
-    # cv2.imshow('original', heading_image)
-    key = cv2.waitKey(10)
-    # save each frame to a png to make a video '/home/debian/Group4/src/opencv/frames/snap%s.png'
-    cv2.imwrite('/home/debian/Group4/src/opencv/frames/snap%s.png' % frames_num, heading_image)
+        last_angle_diff = angle_diff
+        servo_percentage = servo_percentage + Kp_st * angle_diff + Kd_st * angle_diff_per_sec + Ki_st * error_int_st
+        
+        # Correct the overshoot
+        overshoot_high_bound = 9.6
+        overshoot_low_bound = 5.7
+        last1 = servo_percentage
+        last2 = speed_percentage
+        if (servo_percentage > overshoot_high_bound):
+            servo_percentage = overshoot_high_bound
+        elif (servo_percentage < overshoot_low_bound):
+            servo_percentage = overshoot_low_bound
+            
+        if (servo_percentage >= 8.8 and iter_cnt%5 == 0):
+            speed_percentage = slow_speed_percentage
+        elif (servo_percentage <= 6.3 and iter_cnt%5 == 0):
+            speed_percentage = slow_speed_percentage
+        else:
+            speed_percentage = fast_speed_percentage
 
+        # print(round(last1,2), round(servo_percentage,2), steering_angle, last2, speed_percentage, dt)
+        # print(speed_percentage)
 
-    # # Record the variables
-    # T = np.append(T, [iter_cnt])
-    # steer_error = np.append(steer_error, [error_st / 100])
-    # # speed_error = np.append(speed_error, [1 / error_sp * 1e7])
-    # steer_P = np.append(steer_P, [Kp_st * error_st])
-    # steer_I = np.append(steer_I, [Kd_st * error_diff_st])
-    # steer_D = np.append(steer_D, [Ki_st * error_int_st])
-    # # speed_pwm_duty = np.append(speed_pwm_duty, [default_speed])
-    # # speed = np.append(speed, [error_sp])
-    # steer_pwm_duty = np.append(steer_pwm_duty, [servo_percentage])
-    # iter_cnt = iter_cnt + 1
-    # if (end_flag == 1):
-    #     break
+        # modify the PWM duty of servo
+        modify_Servo(servo_percentage)
+        # -------- we don't have encoder, so we don't need to do the speed PID --------
+        # Speed PID
+        
+
+        # error_sp = int(encoder) - target_speed
+        # error_diff_sp = (error_sp - last_error_sp) / dt
+        # if (iter_cnt != 0):
+            # error_int_sp = (error_sp - last_error_sp) * dt
+        # else:
+            # error_int_sp = 0
+        # last_error_sp = error_sp
+        # speed = speed - Kp_sp * error_sp + Kd_sp * error_diff_sp + Ki_sp * error_int_sp
+        # Correct the overshoot
+        # if (speed > 8.30):
+            # speed = 8.30
+        # elif (speed < 8.20):
+            # speed = 8.20
+        # modify the PWM duty of motor
+        modify_ESC(speed_percentage)
+        # Show the image
+        # cv2.imshow('original', heading_image)
+        key = cv2.waitKey(1)
+        # save each frame to a png to make a video '/home/debian/Group4/src/opencv/frames/snap%s.png'
+        # cv2.imwrite('/home/debian/Group4/src/opencv/frames/snap%s.png' % frames_num, heading_image)
+
+        
+
+        # # Record the variables
+        # T = np.append(T, [iter_cnt])
+        # steer_error = np.append(steer_error, [angle_diff / 100])
+        # # speed_error = np.append(speed_error, [1 / error_sp * 1e7])
+        # steer_P = np.append(steer_P, [Kp_st * angle_diff])
+        # steer_I = np.append(steer_I, [Kd_st * angle_diff_per_sec])
+        # steer_D = np.append(steer_D, [Ki_st * error_int_st])
+        # # speed_pwm_duty = np.append(speed_pwm_duty, [speed])
+        # # speed = np.append(speed, [error_sp])
+        # steer_pwm_duty = np.append(steer_pwm_duty, [servo_percentage])
+        iter_cnt = iter_cnt + 1
+        # if (end_flag == 1):
+        #     break
+except KeyboardInterrupt:
+    # Stop loop when ctrl+c
+    modify_ESC(7.5)
+    pass
 
 # Stop the car
 # modify_ESC(7.5)
